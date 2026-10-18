@@ -71,30 +71,45 @@
     v.maxPct=number(raw.maxPct,'Максимальная порция, %',100,200);
     v.tolerance=number(raw.tolerance,'Допуск, %',1,25);
     if(raw.mode==='adult') {
-      v.age=number(raw.age,'Возраст',19,78);
+      v.age=number(raw.age,'Возраст',7,78);
       if (!Number.isInteger(v.age)) throw new Error('Возраст укажите целым числом лет.');
       v.height=number(raw.height,'Рост, см',100,230);
-      v.weight=number(raw.weight,'Вес, кг',30,250);
+      v.weight=number(raw.weight,'Вес, кг',v.age<19?10:30,250);
       if(!['male','female'].includes(raw.gender)) throw new Error('Выберите пол для формулы.');
       v.gender=raw.gender;
       v.activity=number(raw.activity,'Коэффициент активности',1.2,1.9);
       if(![1.2,1.375,1.55,1.725,1.9].includes(v.activity)) throw new Error('Выберите коэффициент активности из списка.');
       if(!['maintain','deficit','surplus'].includes(raw.goal)) throw new Error('Выберите сценарий расчёта.');
       v.goal=raw.goal;
+      if(v.age<19 && v.goal!=='maintain')throw new Error('До 19 лет автоматические дефицит и профицит отключены.');
     } else v.energy=number(raw.energy,'Энергетическая цель, ккал',600,8000);
     return v;
   }
   function targets(raw) {
     const input=validate(raw);
-    let resting=null, energy=input.energy;
+    let resting=null, energy=input.energy, formula=null;
     if(input.mode==='adult') {
-      resting=10*input.weight+6.25*input.height-5*input.age+(input.gender==='male'?5:-161);
+      // Schofield (1985), FAO/WHO/UNU Human energy requirements, Table 5.2:
+      // https://www.fao.org/4/y5686e/y5686e07.htm
+      // Age bands implemented as [7,10), [10,18), and [18,19).
+      // These predict BMR; multiplying by a model PAL is NOT a full paediatric
+      // energy requirement: energy for growth is not modelled here.
+      if(input.age<19) {
+        const male=input.gender==='male', w=input.weight;
+        if(input.age<10)resting=male?22.706*w+504.3:20.315*w+485.9;
+        else if(input.age<18)resting=male?17.686*w+658.2:13.384*w+692.6;
+        else resting=male?15.057*w+692.2:14.818*w+486.6;
+        formula='schofield';
+      } else {
+        resting=10*input.weight+6.25*input.height-5*input.age+(input.gender==='male'?5:-161);
+        formula='mifflin';
+      }
       const factor=input.goal==='deficit'?.85:input.goal==='surplus'?1.15:1;
       energy=Math.round(resting*input.activity*factor);
       if(!Number.isFinite(energy)||energy<600||energy>8000)
         throw new Error('Оценка выходит за рабочий диапазон модели (600–8000 ккал). Проверьте параметры.');
     }
-    return {input,resting, kcal:energy,p:energy*input.proteinPct/400,
+    return {input,resting,formula, kcal:energy,p:energy*input.proteinPct/400,
       f:energy*input.fatPct/900,c:energy*input.carbPct/400};
   }
   function bounds(food,input) {
@@ -304,18 +319,29 @@
             const selected=document.querySelector('input[name="gender"]:checked');
             const raw={mode:'adult',gender:selected?selected.value:'',proteinPct:25,fatPct:30,carbPct:45,minPct:50,maxPct:150,tolerance:10};
             ['age','height','weight','activity','goal'].forEach(id=>raw[id]=document.getElementById(id).value);
-            if(Number(raw.weight)>200)throw new Error('«Вес»: введите число от 30 до 200.');
+            if(Number(raw.weight)>200)throw new Error('«Вес»: значение не должно превышать 200 кг.');
             return raw;
         }
         function calculateNutrients() {
             try {
+                const age=Number(document.getElementById('age').value);
+                const child=Number.isInteger(age)&&age>=7&&age<19;
+                const goal=document.getElementById('goal');
+                Array.from(goal.options || []).forEach(option=>option.disabled=child&&option.value!=='maintain');
+                if(child)goal.value='maintain';
+                document.getElementById('weight').min=child?'10':'30';
                 const targets=NutriCalc.targets(profileValues());
                 const key=JSON.stringify(targets.input);
                 currentCalculations = {bmr:targets.resting,tdee:targets.kcal,proteins:targets.p,fats:targets.f,carbs:targets.c};
                 setCalculationError('');
                 document.getElementById('bmr-val').innerText=Math.round(targets.resting).toLocaleString('ru-RU');
                 document.getElementById('tdee-val').innerText=targets.kcal.toLocaleString('ru-RU');
-                document.getElementById('goal-label-text').innerText=targets.input.goal==='deficit'?'Расчётная цель: −15%':targets.input.goal==='surplus'?'Расчётная цель: +15%':'С учётом активности';
+                document.getElementById('bmr-formula').innerText=targets.formula==='schofield'?'Оценка энергии покоя (Шофилд, по возрасту и полу)':'Оценка энергии покоя (Миффлин-Сан Жеор, 19–78 лет)';
+                document.getElementById('bmr-formula').title=targets.formula==='schofield'?'Шофилд, 1985; FAO, таблица 5.2. Расчёт по массе тела. Рост в эту формулу не входит. https://www.fao.org/4/y5686e/y5686e07.htm':'Mifflin et al., 1990. https://pubmed.ncbi.nlm.nih.gov/2305711/';
+                document.getElementById('energy-caption').innerText=child?'Расчётная энергия за день':'Целевая суточная норма';
+                document.getElementById('menu-target-label').innerText=child?'Расчётная цель:':'Норма:';
+                document.getElementById('print-target-label').innerText=child?'Учебная расчётная цель:':'Рассчитанная суточная норма:';
+                document.getElementById('goal-label-text').innerText=child?'Учебная оценка BMR × PAL, без учёта роста; не норма питания. Дефицит и профицит отключены.':targets.input.goal==='deficit'?'Расчётная цель: −15%':targets.input.goal==='surplus'?'Расчётная цель: +15%':'С учётом активности';
                 const ids={p:['protein-val','menu-target-p'],f:['fats-val','menu-target-f'],c:['carbs-val','menu-target-c']};
                 for(const [k,list] of Object.entries(ids))list.forEach(id=>document.getElementById(id).innerText=Math.round(targets[k]));
                 document.getElementById('menu-target-kcal').innerText=targets.kcal;
@@ -470,7 +496,7 @@
                             <p class="text-xs text-slate-400 mt-0.5">${rawFood.desc}</p>
                         </div>
 
-                        <div class="flex items-center space-x-4 text-xs">
+                        <div class="meal-macros flex items-center space-x-4 text-xs">
                             <span class="text-slate-400">БЖУ блюда:</span>
                             <span class="text-sky-400 font-medium">Б: ${portion.p}г</span>
                             <span class="text-amber-400 font-medium">Ж: ${portion.f}г</span>

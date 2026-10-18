@@ -116,6 +116,43 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
             #weekly-menu-container > div + div { break-before: page; }
             @page { size: A4; margin: 12mm; }
         }
+
+/* Mobile-only corrections. Original desktop structure and appearance are retained. */
+@media screen and (max-width: 639px) {
+    header .max-w-7xl { padding-left: 12px; padding-right: 12px; }
+    header .h-16 { gap: 8px; height: auto; min-height: 64px; }
+    header .h-16 > div:first-child { min-width: 0; gap: 8px; }
+    header .h-16 > div:first-child > :not([hidden]) ~ :not([hidden]) { margin-left: 0; }
+    header .h-16 > div:first-child > div:first-child { padding: 8px; flex-shrink: 0; }
+    header .text-xl { font-size: 18px; line-height: 1.25; }
+    header nav { flex-shrink: 0; padding: 4px; }
+    header nav button { padding: 10px 8px; min-width: 40px; min-height: 44px; }
+    main { padding-left: 12px !important; padding-right: 12px !important; }
+    main .grid > *, main .flex > * { min-width: 0; }
+    input[type="number"], input[type="text"], select { font-size: 16px !important; min-height: 44px; }
+    #calcForm button, #section-menu button, #section-handbook button { min-height: 44px; }
+    .macro-heading { flex-wrap: wrap; gap: 8px 12px; }
+    .macro-heading > span:first-child { max-width: 100%; }
+    .macro-heading > span:first-child > span { overflow-wrap: anywhere; }
+    .macro-heading > span:last-child { white-space: normal; }
+    .menu-action { flex-wrap: wrap; gap: 12px; }
+    .menu-action > div { flex: 1 1 100%; }
+    .menu-action > button { flex: 1 1 100%; justify-content: center; min-height: 44px; }
+    .meal-macros { flex-wrap: wrap; gap: 8px 12px; }
+    .meal-macros > :not([hidden]) ~ :not([hidden]) { margin-left: 0; }
+    .meal-macros > span:first-child { flex-basis: 100%; }
+    #menu-actual, #weekly-menu-container p, #daily-menu-container p { overflow-wrap: anywhere; }
+}
+@media screen and (max-width: 359px) {
+    #section-calculator .glass-card.p-6, #section-menu > .glass-card.p-6,
+    #section-handbook > .glass-card.p-6 { padding: 20px; }
+    header .text-xl { font-size: 16px; }
+    header .h-16 > div:first-child { gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
     </style>
 </head>
 <body class="min-h-screen flex flex-col justify-between custom-scrollbar">
@@ -199,7 +236,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
                                 <div>
                                     <label for="age" class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Возраст</label>
                                     <div class="relative">
-                                        <input type="number" id="age" value="30" min="19" max="78" required class="w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-center" oninput="calculateNutrients()">
+                                        <input type="number" id="age" value="30" min="7" max="78" required class="w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-center" oninput="calculateNutrients()">
                                         <span class="text-[10px] text-slate-500 absolute bottom-1 right-2">лет</span>
                                     </div>
                                 </div>
@@ -259,7 +296,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
                             <div>
                                 <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Базовый метаболизм (BMR)</span>
                                 <div class="text-2xl font-black text-slate-200 mt-1"><span id="bmr-val">0</span> <span class="text-sm font-normal text-slate-400">ккал</span></div>
-                                <p class="text-[11px] text-slate-500 mt-0.5">Оценка энергии покоя (Миффлин-Сан Жеор, 19–78 лет)</p>
+                                <p id="bmr-formula" class="text-[11px] text-slate-500 mt-0.5">Оценка энергии покоя (Миффлин-Сан Жеор, 19–78 лет)</p>
                             </div>
                             <div class="p-3 bg-slate-800/80 rounded-xl border border-slate-700/50">
                                 <i data-lucide="flame" class="w-6 h-6 text-slate-400"></i>
@@ -269,7 +306,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
                         <div class="glass-card rounded-2xl p-5 border-l-4 border-l-emerald-500 flex justify-between items-center relative overflow-hidden shadow-neon">
                             <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl"></div>
                             <div>
-                                <span class="text-xs text-emerald-400 uppercase tracking-wider font-semibold">Целевая суточная норма</span>
+                                <span id="energy-caption" class="text-xs text-emerald-400 uppercase tracking-wider font-semibold">Целевая суточная норма</span>
                                 <div class="text-3xl font-black text-white mt-1"><span id="tdee-val">0</span> <span class="text-sm font-normal text-emerald-400">ккал</span></div>
                                 <p class="text-[11px] text-emerald-300/70 mt-0.5" id="goal-label-text">С учетом активности и цели</p>
                             </div>
@@ -281,7 +318,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
 
                     <!-- Macro Nutrients Breakdown Card -->
                     <div class="glass-card rounded-2xl p-6">
-                        <h3 class="text-lg font-bold text-white mb-4 flex items-center justify-between">
+                        <h3 class="macro-heading text-lg font-bold text-white mb-4 flex items-center justify-between">
                             <span class="flex items-center space-x-2">
                                 <i data-lucide="pie-chart" class="w-5 h-5 text-emerald-400"></i>
                                 <span>Макронутриенты (БЖУ)</span>
@@ -356,7 +393,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
                     </div>
 
                     <!-- Action Banner -->
-                    <div class="glass-card rounded-2xl p-5 flex items-center justify-between bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/20">
+                    <div class="menu-action glass-card rounded-2xl p-5 flex items-center justify-between bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/20">
                         <div class="space-y-1">
                             <h4 class="font-bold text-emerald-400 text-sm">Сформировать готовое меню?</h4>
                             <p class="text-xs text-slate-400">Автоматический расчёт блюд и порций под вашу суточную норму.</p>
@@ -381,7 +418,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
                         <span>Интеллектуальное меню</span>
                     </h2>
                     <p class="text-xs text-slate-400 mt-1">
-                        Норма: <span class="text-emerald-400 font-bold" id="menu-target-kcal">2100</span> ккал | 
+                        <span id="menu-target-label">Норма:</span> <span class="text-emerald-400 font-bold" id="menu-target-kcal">2100</span> ккал | 
                         Белки: <span class="text-sky-400 font-semibold" id="menu-target-p">131</span>г | 
                         Жиры: <span class="text-amber-400 font-semibold" id="menu-target-f">70</span>г | 
                         Углеводы: <span class="text-emerald-400 font-semibold" id="menu-target-c">236</span>г
@@ -410,7 +447,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
             <!-- Print Header (Only visible when printing) -->
             <div class="hidden print:block mb-6">
                 <h1 class="text-2xl font-bold text-black">NutriCalc PRO — Индивидуальный рацион питания</h1>
-                <p class="text-sm text-gray-600">Рассчитанная суточная норма: <span id="print-target-kcal"></span> ккал</p>
+                <p class="text-sm text-gray-600"><span id="print-target-label">Рассчитанная суточная норма:</span> <span id="print-target-kcal"></span> ккал</p>
                 <hr class="my-2">
             </div>
 
@@ -465,7 +502,7 @@ lucide.createIcons({icons});\``);if(typeof c>"u")throw new Error("`createIcons()
     <footer title="Учебный проект. Пищевая база требует проверки рецептур; расчёт не является медицинским назначением." class="glass-nav py-6 mt-12 no-print border-t border-slate-800">
         <div class="max-w-7xl mx-auto px-4 text-center space-y-2">
             <p class="text-xs text-slate-400">
-                NutriCalc PRO &copy; 2026–2027. Разработал: Образцов Георгий (ГБОУ «Лицей №533», 7 класс).
+                NutriCalc PRO &copy; 2026–2027. Разработал: Образцов Георгий (ГБОУ «Лицей №344», 7 класс).
             </p>
             <p class="text-[11px] text-slate-500">
                 Проект представлен на соревновании «Шаг в будущее ЮНИОР». Научный руководитель: Буракова А. В.
