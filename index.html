@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Учебный калькулятор и исследование подбора меню: калории, БЖУ, ограничения порций и проверка отклонений.">
+<meta name="color-scheme" content="dark light">
+<title>NutriCalc Pro — исследование подбора меню</title>
+<link rel="stylesheet" href="./styles.css">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Перейти к калькулятору</a>
+<header class="site-header"><div class="header-inner"><a class="brand" href="#main">NutriCalc <span>PRO 2.0</span></a><nav aria-label="Основная навигация"><a href="#main">Калькулятор</a><a href="#database">База блюд</a><a href="#method">Метод</a></nav></div></header>
+<main id="main" class="container">
+<section class="intro"><p class="eyebrow">Школьный проект · прикладная математика</p><h1>Меню с проверяемым результатом</h1><p>Задайте цель и границы порций. Сравните найденное меню с целевыми калориями и БЖУ, изучите отклонения.</p></section>
+<div class="notice"><strong>Учебная модель.</strong> База блюд перенесена из исходного проекта и не подтверждена рецептурами. Расчёт не назначает питание и не подтверждает полезность рациона. Аллергии, заболевания и индивидуальные потребности не учитываются.</div>
+<div class="app-grid">
+<aside class="panel inputs" aria-labelledby="parameters-title">
+<h2 id="parameters-title">Параметры модели</h2>
+<form id="calc-form" novalidate>
+<label for="mode">Режим</label><select id="mode"><option value="manual">Учебный: заданная калорийность</option><option value="adult">Оценка по формуле: 19–78 лет</option></select>
+<div id="manual-fields"><label for="energy">Энергетическая цель, ккал/сут</label><input id="energy" type="number" min="600" max="8000" step="1" value="2400" inputmode="decimal" aria-describedby="energy-help"><p id="energy-help" class="small muted">Условный параметр эксперимента, а не рекомендуемая норма для школьника. Диапазон модели: 600–8000 ккал.</p></div>
+<div id="adult-fields" hidden>
+<p class="small muted">Формула Миффлина — Сан Жеора получена для взрослых 19–78 лет. Вне этого возраста автоматический расчёт недоступен. В учебном режиме можно исследовать заданную цель.</p>
+<label for="gender">Пол для формулы</label><select id="gender"><option value="male">Мужской</option><option value="female">Женский</option></select>
+<div class="fields-three"><div><label for="age">Возраст, лет</label><input id="age" type="number" min="19" max="78" step="1" value="30" inputmode="numeric"></div><div><label for="height">Рост, см</label><input id="height" type="number" min="100" max="230" step="0.1" value="168" inputmode="decimal"></div><div><label for="weight">Вес, кг</label><input id="weight" type="number" min="30" max="250" step="0.1" value="58" inputmode="decimal"></div></div>
+<label for="activity">Модельный коэффициент активности</label><select id="activity"><option value="1.2">1,2 — минимальная</option><option value="1.375">1,375 — низкая</option><option value="1.55" selected>1,55 — средняя</option><option value="1.725">1,725 — высокая</option><option value="1.9">1,9 — очень высокая</option></select>
+<label for="goal">Сценарий эксперимента</label><select id="goal"><option value="maintain">Без изменения оценки</option><option value="deficit">Оценка минус 15%</option><option value="surplus">Оценка плюс 15%</option></select><p class="small muted">Коэффициенты и ±15% — допущения модели. Оценка не измеряет индивидуальный обмен веществ и не является назначением для снижения или набора веса.</p>
+</div>
+<fieldset><legend>Доли энергии из БЖУ</legend><p class="small muted">Модельные доли. Сумма должна быть 100%.</p><div class="fields-three"><div><label for="proteinPct">Белки, %</label><input id="proteinPct" type="number" min="1" max="98" value="25" step="0.1" inputmode="decimal"></div><div><label for="fatPct">Жиры, %</label><input id="fatPct" type="number" min="1" max="98" value="30" step="0.1" inputmode="decimal"></div><div><label for="carbPct">Углеводы, %</label><input id="carbPct" type="number" min="1" max="98" value="45" step="0.1" inputmode="decimal"></div></div></fieldset>
+<fieldset><legend>Ограничения поиска</legend><p class="small muted">Порции задаются относительно базовой массы каждого блюда. Шаг поиска — 10 г. Границы выбраны для эксперимента, а не как нормы питания.</p><div class="fields-two"><div><label for="minPct">Минимум, %</label><input id="minPct" type="number" min="25" max="100" value="50" step="1" inputmode="decimal"></div><div><label for="maxPct">Максимум, %</label><input id="maxPct" type="number" min="100" max="200" value="150" step="1" inputmode="decimal"></div></div>
+<label for="tolerance">Допуск по каждому показателю, %</label><input id="tolerance" type="number" min="1" max="25" value="10" step="0.1" inputmode="decimal"></fieldset>
+<p id="form-error" class="error" role="alert" hidden></p>
+<button id="calculate" type="submit" class="primary wide">Рассчитать и составить неделю</button>
+</form>
+<p id="storage-note" class="small muted" role="status">Расчёт выполняется на устройстве. Сформированный план сохраняется только в этом браузере.</p><button id="clear-storage" class="text-button" type="button">Удалить сохранённый план</button>
+</aside>
+<div class="results-column">
+<div class="toolbar no-print"><button id="regenerate" type="button" disabled>Другой вариант недели</button><button id="download" type="button" disabled>Скачать данные JSON</button><button id="print" type="button" disabled>Печать / PDF</button></div>
+<p id="empty-state" class="panel empty">Задайте параметры и нажмите «Рассчитать и составить неделю».</p>
+<section id="result" tabindex="-1" aria-labelledby="result-title" hidden>
+<div class="panel result-head"><p class="eyebrow">Результат поиска</p><h2 id="result-title">План и отклонения от цели</h2><p id="summary" class="summary"></p><p id="estimate" class="small muted"></p><p id="search-info" class="small muted"></p><p id="variant-info" class="small muted"></p><p id="no-solution" class="warning" hidden></p>
+<div class="view-controls no-print"><div class="segmented" role="group" aria-label="Отображение плана"><button type="button" id="view-day" aria-pressed="true">День</button><button type="button" id="view-week" aria-pressed="false">Неделя</button></div><div id="day-picker"><label for="day-select">День недели</label><select id="day-select"><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></div></div>
+<p class="small muted">Переключение вида сохраняет блюда. Новый план создаёт кнопка «Другой вариант недели». Суммы считаются без промежуточного округления; отображаемые значения округлены.</p><p id="print-mode" class="print-only"></p></div>
+<div id="plans"></div>
+</section>
+</div></div>
+<section id="database" class="panel reference"><h2>База блюд</h2><p>20 вариантов из исходного проекта. БЖУ указаны на 100 г готового блюда, энергия рассчитана как 4 × белки + 9 × жиры + 4 × углеводы. Для практического использования необходима проверка рецептур и исходных значений.</p><label for="food-search">Поиск блюда</label><input id="food-search" type="search" placeholder="Например, гречка" autocomplete="off"><p id="food-count" class="small muted" role="status"></p>
+<div class="table-scroll"><table><caption>Модельные характеристики блюд. БЖУ в граммах на 100 г.</caption><thead><tr><th scope="col">Приём пищи</th><th scope="col">Блюдо</th><th scope="col">Базовая масса, г</th><th scope="col">ккал / 100 г</th><th scope="col">Белки</th><th scope="col">Жиры</th><th scope="col">Углеводы</th></tr></thead><tbody id="food-rows"></tbody></table></div></section>
+<section id="method" class="panel reference"><h2>Как работает модель</h2><p>Для каждого дня выбирается по одному блюду на завтрак, обед, перекус и ужин. Алгоритм рассматривает все 625 сочетаний блюд. Для каждого сочетания он уточняет массы порций на сетке с шагом 10 г, соблюдая заданные ограничения.</p><p>Качество учитывает относительные отклонения энергии, белков, жиров и углеводов. Энергия имеет вес 4, каждый макронутриент — 1. Дополнительный вес 0,2 учитывает распределение энергии между приёмами пищи: 25%, 35%, 15%, 25%.</p><p class="formula">Q = 4e<sub>E</sub>² + e<sub>Б</sub>² + e<sub>Ж</sub>² + e<sub>У</sub>² + 0,2 Σ(E<sub>приёма</sub>/E<sub>цели</sub> − доля)²</p><p>e = (факт − цель) / цель. Координатный поиск выполняет до 12 проходов по четырём порциям. Среди найденных вариантов выбираются планы с учётом повторов блюд. <strong>Перебор сочетаний не означает полный перебор всех масс: глобальная оптимальность не доказана.</strong> Повторы на неделе возможны.</p><p>Зелёный статус означает только попадание всех четырёх показателей в заданный допуск. Он не подтверждает полноценность или безопасность питания. Если цель не достигнута, сайт показывает отклонения и ближайшие найденные варианты, не объявляя задачу математически неразрешимой.</p>
+<details><summary>Источники и ограничения</summary><ul><li><a href="https://pubmed.ncbi.nlm.nih.gov/2305711/" target="_blank" rel="noopener noreferrer">Mifflin et al., 1990: формула оценки расхода энергии в покое</a>. Исходная выборка — 19–78 лет. Даже в этом диапазоне формула остаётся оценкой.</li><li><a href="https://developers.google.com/optimization/lp/stigler_diet" target="_blank" rel="noopener noreferrer">Задача о диете, Google OR-Tools</a>: пример математической постановки. Данный сайт использует собственный упрощённый поиск, а не решатель OR-Tools.</li><li><a href="https://ods.od.nih.gov/HealthInformation/nutrientrecommendations.aspx" target="_blank" rel="noopener noreferrer">NIH ODS: рекомендации по нутриентам</a>. Возрастные нормы витаминов и минералов здесь не назначаются и в расчёте не используются.</li><li>Данные и базовые массы блюд взяты из первой версии проекта без подтверждённых рецептур. Численные результаты описывают эту учебную базу.</li><li>Учитываются только энергия и БЖУ. Витамины, минералы, аллергены и медицинские ограничения не оптимизируются.</li><li>Модель не гарантирует, что произвольная цель достижима при выбранной базе и размерах порций.</li></ul></details>
+</section>
+<noscript><div class="error">Для расчёта нужен JavaScript. Включите его в браузере и перезагрузите страницу.</div></noscript>
+</main>
+<footer class="container"><p>Исходный проект: Георгий Образцов. Версия 2.0: исправления и алгоритм подготовлены с помощью ИИ. Авторство исходного проекта и доработок следует различать при защите.</p><p class="small">Работает без внешних библиотек и сетевых запросов. При переходе по ссылкам на источники откроются внешние сайты.</p></footer>
+</body></html>
