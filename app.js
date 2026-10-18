@@ -5,7 +5,7 @@
  */
 (function (root) {
   'use strict';
-  const VERSION = '2.0.0';
+  const VERSION = '3.0.0';
   const KEYS = ['kcal', 'p', 'f', 'c'];
   const MEALS = [
     {key:'breakfast', title:'Завтрак', share:.25},
@@ -185,108 +185,465 @@
         days.push({items,totals,errors:deviation,score:score(items,t),meets:KEYS.every(k=>Math.abs(deviation[k])<=t.input.tolerance/100+1e-12)});
       }
       return {version:VERSION,revision:Number.isInteger(raw.revision)&&raw.revision>=0&&raw.revision<1e6?raw.revision:0,
-        targets:t,days,combinations:625,foundAcceptable:candidates(t).filter(x=>x.meets).length,method:'Восстановленный план; показатели и число подходящих вариантов пересчитаны по базе версии 2.0.0.'};
+        targets:t,days,combinations:625,foundAcceptable:candidates(t).filter(x=>x.meets).length,method:'Восстановленный план; показатели и число подходящих вариантов пересчитаны по базе версии 3.0.0.'};
     }catch{return null;}
   }
   const api={VERSION,MEALS,DAYS,foods,DEFAULTS,validate,targets,bounds,portion,total,errors,score,solveCombination,candidates,plan,validateSaved};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   root.NutriCalc=api;
-  if(typeof document==='undefined')return;
 
-  const $=id=>document.getElementById(id), STORE='nutricalc-pro-v2';
-  let state=null, activeDay=0, view='day',dirty=false, generation=0;
-  const fmt=(n,d=0)=>Number(n).toLocaleString('ru-RU',{minimumFractionDigits:d,maximumFractionDigits:d});
-  const pct=n=>`${n>=0?'+':''}${fmt(n*100,1)}%`;
-  function node(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
-  function read(){const out={};for(const key of Object.keys(DEFAULTS))out[key]=$(key).value;return out;}
-  function write(v){for(const [key,val]of Object.entries({...DEFAULTS,...v}))if($(key))$(key).value=val;toggleMode();}
-  function toggleMode(){const adult=$('mode').value==='adult';$('adult-fields').hidden=!adult;$('manual-fields').hidden=adult;
-    for(const key of ['age','height','weight','gender','activity','goal'])$(key).disabled=!adult;
-    $('energy').disabled=adult;}
-  function message(text){$('form-error').textContent=text;$('form-error').hidden=!text;}
-  function persist(){try{localStorage.setItem(STORE,JSON.stringify(state));$('storage-note').textContent='План сохранён только в этом браузере. В интернет данные не отправляются.';}catch{$('storage-note').textContent='Сохранение в браузере недоступно. Скачайте план, чтобы не потерять его.';}}
-  function invalidate(){generation++;dirty=true;state=null;message('');$('result').hidden=true;$('empty-state').hidden=false;$('empty-state').textContent='Параметры изменены. Нажмите «Рассчитать и составить неделю».';
-    $('regenerate').disabled=true;$('download').disabled=true;$('print').disabled=true;
-    try{localStorage.removeItem(STORE);}catch{} }
-  function generate(newVariant=false){
-    message('');
-    const ticket=++generation;
-    try{
-      const t=targets(read());
-      const revision=newVariant&&state?state.revision+1:0;
-      $('calculate').disabled=true;$('calculate').textContent='Расчёт…';
-      // Отдаём браузеру кадр, затем выполняем ограниченный поиск.
-      setTimeout(()=>{
-        try {if(ticket!==generation)return;state=plan(t,revision);dirty=false;persist();render();$('result').focus();}
-        catch(e){state=null;message(e.message);$('result').hidden=true;}
-        finally{$('calculate').disabled=false;$('calculate').textContent='Рассчитать и составить неделю';}
-      },0);
-    }catch(e){state=null;$('result').hidden=true;$('empty-state').hidden=false;$('empty-state').textContent='Исправьте параметры и повторите расчёт.';
-      for(const id of ['regenerate','download','print'])$(id).disabled=true;message(e.message);}
-  }
-  function totalsTable(day,t){
-    const wrap=node('div','table-scroll'),table=node('table','totals');
-    const head=node('thead'),hr=node('tr');for(const s of ['Показатель','Цель','Меню','Отклонение'])hr.append(node('th','',s));head.append(hr);table.append(head);
-    const body=node('tbody');for(const [k,label,unit]of [['kcal','Энергия','ккал'],['p','Белки','г'],['f','Жиры','г'],['c','Углеводы','г']]){
-      const tr=node('tr');tr.append(node('th','',label),node('td','',`${fmt(t[k],k==='kcal'?0:1)} ${unit}`),
-        node('td','',`${fmt(day.totals[k],k==='kcal'?0:1)} ${unit}`),node('td',Math.abs(day.errors[k])<=t.input.tolerance/100+1e-12?'ok':'bad',pct(day.errors[k])));body.append(tr);
-    }table.append(body);wrap.append(table);return wrap;
-  }
-  function renderDay(day,index,t){
-    const card=node('article','day-card');card.append(node('h3','',DAYS[index]),node('p',day.meets?'status ok':'status bad',day.meets?
-      `Все четыре показателя в допуске ±${fmt(t.input.tolerance)}%.`:
-      `Цель не достигнута в допуске ±${fmt(t.input.tolerance)}%. Показан приближённый вариант.`));
-    card.append(totalsTable(day,t));const grid=node('div','meal-grid');
-    day.items.forEach((item,i)=>{const f=foods[MEALS[i].key].find(f=>f.id===item.id),lim=bounds(f,t.input),box=node('section','meal');
-      box.append(node('h4','',MEALS[i].title),node('p','food-name',f.name),node('p','portion',`${fmt(item.grams)} г · ${fmt(item.kcal,1)} ккал`),
-        node('p','muted',`Б ${fmt(item.p,1)} г · Ж ${fmt(item.f,1)} г · У ${fmt(item.c,1)} г`),
-        node('p','small muted',`Допустимая порция: ${lim.min}–${lim.max} г. Базовая: ${f.baseGrams} г.`));grid.append(box);});card.append(grid);return card;
-  }
-  function render(){
-    if(!state)return;const t=state.targets;
-    $('result').hidden=false;$('empty-state').hidden=true;
-    for(const id of ['regenerate','download','print'])$(id).disabled=false;
-    $('estimate').textContent=t.resting===null?'Режим: заданная учебная цель.':`Оценка расхода в покое: ${fmt(t.resting,1)} ккал/сут. Результат формулы, без измерения обмена веществ.`;
-    $('summary').textContent=`Цель: ${fmt(t.kcal)} ккал · Б ${fmt(t.p,1)} г · Ж ${fmt(t.f,1)} г · У ${fmt(t.c,1)} г`;
-    $('search-info').textContent=state.foundAcceptable===null?state.method:
-      `${state.method} В допуске: ${state.foundAcceptable} из ${state.combinations} найденных вариантов с уточнёнными порциями.`;
-    $('regenerate').disabled=state.foundAcceptable===1;
-    $('variant-info').textContent=state.foundAcceptable===1?'В допуск попал один найденный вариант: он повторяется на неделе. Для сравнения исследуйте другие границы порций или цели.':'';
-    $('no-solution').hidden=state.days.every(d=>d.meets);
-    $('no-solution').textContent='Найденные варианты не выполняют все цели одновременно. Это не доказательство отсутствия решения. Изучите отклонения, базу блюд и ограничения порций.';
-    $('day-picker').hidden=view==='week';$('day-select').value=String(activeDay);
-    $('view-day').setAttribute('aria-pressed',String(view==='day'));$('view-week').setAttribute('aria-pressed',String(view==='week'));
-    const cont=$('plans');cont.replaceChildren();
-    if(view==='week')state.days.forEach((d,i)=>cont.append(renderDay(d,i,t)));else cont.append(renderDay(state.days[activeDay],activeDay,t));
-    $('print-mode').textContent=view==='week'?'План на неделю':DAYS[activeDay];
-  }
-  function renderDatabase(){
-    const q=$('food-search').value.trim().toLocaleLowerCase('ru');const body=$('food-rows');body.replaceChildren();let count=0;
-    for(const meal of MEALS)for(const f of foods[meal.key]){if(q&&!f.name.toLocaleLowerCase('ru').includes(q))continue;
-      const tr=node('tr');for(const val of [meal.title,f.name,fmt(f.baseGrams),fmt(f.kcal,1),fmt(f.p,1),fmt(f.f,1),fmt(f.c,1)])tr.append(node('td','',val));body.append(tr);count++;}
-    $('food-count').textContent=`Найдено блюд: ${count}`;
-  }
-  function init(){
-    write(DEFAULTS);
-    try{const saved=localStorage.getItem(STORE);if(saved){state=validateSaved(JSON.parse(saved));if(!state){localStorage.removeItem(STORE);$('storage-note').textContent='Сохранённый план повреждён или устарел. Выполните новый расчёт.';}else write(state.targets.input);}}catch{$('storage-note').textContent='Сохранённый план недоступен. Можно выполнить новый расчёт.';}
-    $('calc-form').addEventListener('submit',e=>{e.preventDefault();generate();});
-    $('calc-form').addEventListener('input',()=>{toggleMode();invalidate();});
-    $('calc-form').addEventListener('change',()=>{toggleMode();invalidate();});
-    $('regenerate').addEventListener('click',()=>generate(true));
-    $('view-day').addEventListener('click',()=>{view='day';render();});
-    $('view-week').addEventListener('click',()=>{view='week';render();});
-    $('day-select').addEventListener('change',()=>{activeDay=Number($('day-select').value);render();});
-    $('food-search').addEventListener('input',renderDatabase);
-    $('print').addEventListener('click',()=>{if(state&&!dirty)window.print();});
-    $('download').addEventListener('click',()=>{
-      if(!state||dirty)return;
-      const exportData={...state,notice:'Учебная модель. База блюд не верифицирована. Не персональное назначение питания.',
-        days:state.days.map((d,i)=>({...d,day:DAYS[i],items:d.items.map((x,j)=>({...x,name:foods[MEALS[j].key].find(f=>f.id===x.id).name}))}))};
-      const blob=new Blob([JSON.stringify(exportData,null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=node('a');
-      a.href=url;a.download='nutricalc-plan.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    });
-    $('clear-storage').addEventListener('click',()=>{try{localStorage.removeItem(STORE);$('storage-note').textContent='Сохранённый план удалён из браузера. Текущий расчёт остаётся на экране.';}catch{$('storage-note').textContent='Хранилище браузера недоступно.';}});
-    renderDatabase();if(state)render();
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })(typeof globalThis!=='undefined'?globalThis:this);
+
+        // Global State
+        let currentCalculations = {
+            bmr: 0,
+            tdee: 0,
+            proteins: 0,
+            fats: 0,
+            carbs: 0
+        };
+
+        let savedWeek = null;
+        let planRevision = 0;
+        let lastProfileKey = '';
+        let currentMenuMode = 'daily'; // 'daily' or 'weekly'
+        let currentNutrientCategory = 'all';
+
+        // Food Database (Categorized with macronutrient densities per 100g)
+        const foodDatabase = {
+            breakfast: [
+                { name: "Овсяная каша на молоке с яблоком и корицей", p: 4, f: 3.5, c: 18, baseGrams: 250, desc: "Медленные углеводы, клетчатка" },
+                { name: "Овсяноблин с сыром и зеленью + Яйцо вареное", p: 8, f: 7, c: 12, baseGrams: 200, desc: "Богат белком и полезными жирами" },
+                { name: "Творожная запеканка с изюмом и сметаной 10%", p: 12, f: 5, c: 16, baseGrams: 200, desc: "Кальций и легкоусвояемый белок" },
+                { name: "Гречневая каша с яйцом пашот и авокадо", p: 6, f: 6, c: 20, baseGrams: 220, desc: "Сложные углеводы и Омега-9" },
+                { name: "Скрембл из яиц на цельнозерновом тосте", p: 10, f: 9, c: 15, baseGrams: 180, desc: "Аминокислоты и энергии на утро" }
+            ],
+            lunch: [
+                { name: "Филе куриное запеченное + Гречка + Салат из огурцов", p: 14, f: 3, c: 16, baseGrams: 350, desc: "Классический сбалансированный обед" },
+                { name: "Гуляш из индейки + Бурый рис + Тушеные кабачки", p: 12, f: 4, c: 18, baseGrams: 360, desc: "Низкожировое диетическое мясо" },
+                { name: "Суп-крем из брокколи с сухариками + Запеченный лосось", p: 9, f: 7, c: 12, baseGrams: 380, desc: "Витамин C и Омега-3 жирные кислоты" },
+                { name: "Телятина тушеная + Булгур + Свежие томаты", p: 13, f: 5, c: 17, baseGrams: 350, desc: "Высокое содержание железа и B12" },
+                { name: "Запеченный минтай + Квиноа + Запеченная тыква", p: 11, f: 3, c: 15, baseGrams: 340, desc: "Легкий белок и микроэлементы" }
+            ],
+            snack: [
+                { name: "Творог 5% с яблоком и грецкими орехами", p: 11, f: 5, c: 10, baseGrams: 170, desc: "Казеиновый белок для сытости" },
+                { name: "Греческий йогурт + Горсть миндаля", p: 7, f: 8, c: 6, baseGrams: 160, desc: "Пробиотики и витамин E" },
+                { name: "Печеное яблоко с корицей и мёд + кешью", p: 2, f: 6, c: 18, baseGrams: 180, desc: "Антиоксиданты и магний" },
+                { name: "Сэндвич из цельнозернового хлеба с индейкой", p: 10, f: 3, c: 16, baseGrams: 130, desc: "Удобный быстрый перекус" },
+                { name: "Фруктовый салат (банан, киви) с семенами тыквы", p: 3, f: 4, c: 20, baseGrams: 180, desc: "Витаминный заряд" }
+            ],
+            dinner: [
+                { name: "Треска на пару + Брокколи и цветная капуста", p: 12, f: 2, c: 6, baseGrams: 300, desc: "Легкий ужин перед сном" },
+                { name: "Филе индейки на гриле + Овощное рагу", p: 13, f: 3, c: 8, baseGrams: 320, desc: "Минимум углеводов, максимум белка" },
+                { name: "Салат с тунцом, яйцом, черри и листьями шпината", p: 11, f: 5, c: 4, baseGrams: 280, desc: "Легкоусвояемый протеин и клетчатка" },
+                { name: "Запеченный судак + Свежий салат с оливковым маслом", p: 12, f: 4, c: 5, baseGrams: 300, desc: "Фосфор и полезные жиры" },
+                { name: "Творожная паста с зеленью и огурцом на тосте", p: 10, f: 4, c: 10, baseGrams: 220, desc: "Успокаивающий вечерний перекус" }
+            ]
+        };
+
+        // Handbook Database (Based on Appendix 3 from Document)
+        const nutrientDatabase = [
+            { id: 'retinol', name: 'Витамин A (Ретинол)', category: 'vitamin', role: 'Зрение, рост тканей, иммунитет, здоровье кожи', sources: 'Морковь, печень, сливочное масло, яичный желток, брокколи', norm: '800–1000 мкг', icon: 'eye', color: 'amber' },
+            { id: 'ascorbic', name: 'Витамин C (Аскорбиновая кислота)', category: 'vitamin', role: 'Антиоксидант, синтез коллагена, укрепление иммунитета', sources: 'Цитрусовые, шиповник, болгарский перец, черная смородина', norm: '60–70 мг', icon: 'shield', color: 'emerald' },
+            { id: 'calciferol', name: 'Витамин D (Кальциферол)', category: 'vitamin', role: 'Усвоение кальция и фосфора, здоровье костей и зубов', sources: 'Жирная рыба, рыбий жир, яичный желток, сливочное масло', norm: '10–15 мкг', icon: 'sun', color: 'yellow' },
+            { id: 'cobalamin', name: 'Витамин B12 (Кобаламин)', category: 'vitamin', role: 'Кроветворение, функция нервной системы, синтез ДНК', sources: 'Мясо, рыба, моллюски, молочные продукты, яйца', norm: '2.0–3.0 мкг', icon: 'brain', color: 'sky' },
+            { id: 'calcium', name: 'Кальций (Ca)', category: 'mineral', role: 'Формирование костей и зубов, нервная проводимость, сокращение мышц', sources: 'Молоко, сыр, творог, кунжут, миндаль, зелень', norm: '1200 мг', icon: 'bone', color: 'slate' },
+            { id: 'iron', name: 'Железо (Fe)', category: 'mineral', role: 'Транспорт кислорода (гемоглобин), клеточное дыхание', sources: 'Красное мясо, печень, гречка, чечевица, шпинат', norm: '12–18 мг', icon: 'heart-pulse', color: 'rose' },
+            { id: 'magnesium', name: 'Магний (Mg)', category: 'mineral', role: 'Работа мышц и нервной системы, синтез белка, энергетический обмен', sources: 'Орехи, семечки, бананы, какао, цельнозерновые продукты', norm: '300–400 мг', icon: 'zap', color: 'purple' },
+            { id: 'thiamine', name: 'Витамин B1 (Тиамин)', category: 'vitamin', role: 'Углеводный обмен, поддержка нервной системы и сердца', sources: 'Овсянка, гречка, свинина, орехи, цельнозерновой хлеб', norm: '1.2–1.5 мг', icon: 'activity', color: 'teal' }
+        ];
+
+        function safeIcons() {
+            try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (_) {}
+        }
+        window.onload = function() {
+            restoreProfile();
+            safeIcons();
+            calculateNutrients();
+            renderHandbook();
+        };
+
+        // Tab Switching Logic
+        function switchTab(tabId) {
+            const tabs = ['calculator', 'menu', 'handbook'];
+            tabs.forEach(id => {
+                const section = document.getElementById(`section-${id}`);
+                const btn = document.getElementById(`tab-${id}`);
+                if (id === tabId) {
+                    section.classList.remove('hidden');
+                    btn.classList.add('active');
+                    btn.classList.remove('text-slate-400');
+                } else {
+                    section.classList.add('hidden');
+                    btn.classList.remove('active');
+                    btn.classList.add('text-slate-400');
+                }
+            });
+            safeIcons();
+        }
+
+        // Calculation Core Algorithm (Mifflin-St Jeor & PAL)
+        function setCalculationError(text) {
+            const el = document.getElementById('calc-error');
+            el.textContent = text || '';
+            el.classList.toggle('hidden', !text);
+            if (!text) return;
+            currentCalculations = { bmr: 0, tdee: 0, proteins: 0, fats: 0, carbs: 0 };
+            savedWeek = null;
+            lastProfileKey = '';
+            ['bmr-val','tdee-val','protein-val','fats-val','carbs-val','menu-target-kcal','menu-target-p','menu-target-f','menu-target-c','print-target-kcal'].forEach(id => document.getElementById(id).innerText = '—');
+            document.getElementById('goal-label-text').innerText = 'Проверьте параметры';
+            ['daily-menu-container','weekly-menu-container'].forEach(id => document.getElementById(id).innerHTML = '');
+            document.getElementById('menu-actual').innerText = 'Сначала введите корректные параметры на вкладке «Калькулятор».';
+            document.getElementById('refresh-menu').disabled = true;
+            document.getElementById('print-menu').disabled = true;
+            ['macroChart','mealChart'].forEach(id=>{const c=document.getElementById(id);if(c && c.getContext('2d'))c.getContext('2d').clearRect(0,0,c.width,c.height);});
+            try { localStorage.removeItem('nutricalc-original-v3'); } catch (_) {}
+        }
+        function profileValues() {
+            const selected=document.querySelector('input[name="gender"]:checked');
+            const raw={mode:'adult',gender:selected?selected.value:'',proteinPct:25,fatPct:30,carbPct:45,minPct:50,maxPct:150,tolerance:10};
+            ['age','height','weight','activity','goal'].forEach(id=>raw[id]=document.getElementById(id).value);
+            if(Number(raw.weight)>200)throw new Error('«Вес»: введите число от 30 до 200.');
+            return raw;
+        }
+        function calculateNutrients() {
+            try {
+                const targets=NutriCalc.targets(profileValues());
+                const key=JSON.stringify(targets.input);
+                currentCalculations = {bmr:targets.resting,tdee:targets.kcal,proteins:targets.p,fats:targets.f,carbs:targets.c};
+                setCalculationError('');
+                document.getElementById('bmr-val').innerText=Math.round(targets.resting).toLocaleString('ru-RU');
+                document.getElementById('tdee-val').innerText=targets.kcal.toLocaleString('ru-RU');
+                document.getElementById('goal-label-text').innerText=targets.input.goal==='deficit'?'Расчётная цель: −15%':targets.input.goal==='surplus'?'Расчётная цель: +15%':'С учётом активности';
+                const ids={p:['protein-val','menu-target-p'],f:['fats-val','menu-target-f'],c:['carbs-val','menu-target-c']};
+                for(const [k,list] of Object.entries(ids))list.forEach(id=>document.getElementById(id).innerText=Math.round(targets[k]));
+                document.getElementById('menu-target-kcal').innerText=targets.kcal;
+                document.getElementById('print-target-kcal').innerText=targets.kcal;
+                drawMacroChart(targets.p*4,targets.f*9,targets.c*4);
+                drawMealChart(targets.kcal);
+                if(!savedWeek || key!==lastProfileKey){planRevision=0;savedWeek=NutriCalc.plan(targets,planRevision);lastProfileKey=key;persistProfile();}
+                generateMenuContent();
+            } catch(error) { setCalculationError(error.message); }
+        }
+        function persistProfile() {
+            try { localStorage.setItem('nutricalc-original-v3',JSON.stringify({profile:profileValues(),plan:savedWeek})); } catch (_) {}
+        }
+        function restoreProfile() {
+            try {
+                const stored=JSON.parse(localStorage.getItem('nutricalc-original-v3') || 'null');
+                if(!stored)return;
+                const t=NutriCalc.targets(stored.profile), restored=NutriCalc.validateSaved(stored.plan);
+                if(!restored || JSON.stringify(t.input)!==JSON.stringify(restored.targets.input))return;
+                ['age','height','weight','activity','goal'].forEach(id=>document.getElementById(id).value=stored.profile[id]);
+                const radio=document.querySelector('input[name="gender"][value="'+t.input.gender+'"]');
+                if(radio)radio.checked=true;
+                savedWeek=restored;planRevision=restored.revision;lastProfileKey=JSON.stringify(t.input);
+            } catch (_) { try { localStorage.removeItem('nutricalc-original-v3'); } catch (_) {} }
+        }
+
+        // Draw Canvas Pie Chart for Macros
+        function drawMacroChart(pCal, fCal, cCal) {
+            const canvas = document.getElementById('macroChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const total = pCal + fCal + cCal;
+            if (total === 0) return;
+
+            const slices = [
+                { value: pCal / total, color: '#38bdf8' }, // Sky-400
+                { value: fCal / total, color: '#fbbf24' }, // Amber-400
+                { value: cCal / total, color: '#34d399' }  // Emerald-400
+            ];
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let startAngle = -Math.PI / 2;
+
+            slices.forEach(slice => {
+                const angle = slice.value * Math.PI * 2;
+                ctx.beginPath();
+                ctx.arc(72, 72, 60, startAngle, startAngle + angle);
+                ctx.arc(72, 72, 36, startAngle + angle, startAngle, true);
+                ctx.closePath();
+                ctx.fillStyle = slice.color;
+                ctx.fill();
+                startAngle += angle;
+            });
+        }
+
+        // Draw Canvas Pie Chart for Meal Calories
+        function drawMealChart(tdee) {
+            const canvas = document.getElementById('mealChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            // 25% Breakfast, 35% Lunch, 15% Snack, 25% Dinner
+            const slices = [
+                { value: 0.25, color: '#818cf8' }, // Indigo
+                { value: 0.35, color: '#10b981' }, // Emerald
+                { value: 0.15, color: '#f43f5e' }, // Rose
+                { value: 0.25, color: '#0ea5e9' }  // Sky
+            ];
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let startAngle = -Math.PI / 2;
+
+            slices.forEach(slice => {
+                const angle = slice.value * Math.PI * 2;
+                ctx.beginPath();
+                ctx.arc(72, 72, 60, startAngle, startAngle + angle);
+                ctx.arc(72, 72, 36, startAngle + angle, startAngle, true);
+                ctx.closePath();
+                ctx.fillStyle = slice.color;
+                ctx.fill();
+                startAngle += angle;
+            });
+        }
+
+        function generateMenuContent() {
+            if (!savedWeek) return;
+            const day=savedWeek.days[0];
+            document.getElementById('menu-actual').innerText=currentMenuMode==='daily'?planSummary(day):'Фактические калории, БЖУ и отклонения показаны отдельно для каждого дня. Допуск: ±10%.';
+            document.getElementById('refresh-menu').disabled=savedWeek.foundAcceptable===1;
+            document.getElementById('print-menu').disabled=false;
+            if (currentMenuMode === 'daily') renderDailyMenu(currentCalculations.tdee);
+            else renderWeeklyMenu(currentCalculations.tdee);
+        }
+        function planSummary(day) {
+            const s=day.totals, e=day.errors;
+            const deviations=['kcal','p','f','c'].map(k=>(e[k]>=0?'+':'')+(e[k]*100).toFixed(1)+'%').join(' / ');
+            const status=day.meets?'В пределах ±10% по калориям и БЖУ.':'Найденный вариант не укладывается в ±10% по всем целям.';
+            const repeats=savedWeek && savedWeek.foundAcceptable===1?' В допуске найден один вариант; повторы на неделе неизбежны среди найденных вариантов.':'';
+            return 'Фактически: '+Math.round(s.kcal)+' ккал · Б '+s.p.toFixed(1)+' г · Ж '+s.f.toFixed(1)+' г · У '+s.c.toFixed(1)+' г. Отклонения (ккал/Б/Ж/У): '+deviations+'. '+status+repeats;
+        }
+        function originalFood(index,part) {
+            const key=['breakfast','lunch','snack','dinner'][index];
+            return foodDatabase[key][Number(part.id.slice(1))-1];
+        }
+        function displayPortion(part) {
+            return {...part,kcal:Math.round(part.kcal),p:part.p.toFixed(1),f:part.f.toFixed(1),c:part.c.toFixed(1)};
+        }
+        function calculatePortion(item,targetKcal) {
+            const density=(4*item.p+9*item.f+4*item.c)/100;
+            if(!Number.isFinite(targetKcal)||targetKcal<=0||!Number.isFinite(density)||density<=0)throw new Error('Некорректные данные порции.');
+            const lower=Math.ceil(item.baseGrams*.5/10)*10,upper=Math.floor(item.baseGrams*1.5/10)*10;
+            const grams=Math.max(lower,Math.min(upper,Math.round(targetKcal/density/10)*10));
+            return {grams,kcal:density*grams,p:item.p*grams/100,f:item.f*grams/100,c:item.c*grams/100};
+        }
+
+        function renderDailyMenu(tdee) {
+            const dailyContainer = document.getElementById('daily-menu-container');
+            dailyContainer.innerHTML = '';
+
+            const mealsConfig = [
+                { key: 'breakfast', title: 'Завтрак', percent: 25, time: '08:00', icon: 'sun', color: 'indigo' },
+                { key: 'lunch', title: 'Обед', percent: 35, time: '13:00', icon: 'utensils', color: 'emerald' },
+                { key: 'snack', title: 'Перекус', percent: 15, time: '16:30', icon: 'coffee', color: 'rose' },
+                { key: 'dinner', title: 'Ужин', percent: 25, time: '19:00', icon: 'moon', color: 'sky' }
+            ];
+
+            mealsConfig.forEach((meal,index) => {
+                const part=savedWeek.days[0].items[index];
+                const rawFood=originalFood(index,part);
+                const portion=displayPortion(part);
+
+                const cardHtml = `
+                    <div class="glass-card rounded-2xl p-5 border-l-4 border-l-${meal.color}-500 transition-all hover:border-slate-600">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                            <div class="flex items-center space-x-3">
+                                <div class="p-2.5 bg-slate-900/80 rounded-xl border border-slate-800 text-${meal.color}-400">
+                                    <i data-lucide="${meal.icon}" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-white text-base">${meal.title} <span class="text-xs font-normal text-slate-400">(${meal.percent}%)</span></h3>
+                                    <span class="text-[11px] text-slate-500 font-medium">Рекомендуемое время: ${meal.time}</span>
+                                </div>
+                            </div>
+                            <div class="text-left sm:text-right">
+                                <span class="text-lg font-black text-emerald-400">${portion.kcal} <span class="text-xs font-normal text-slate-400">ккал</span></span>
+                                <p class="text-[11px] text-slate-400">Порция: ~${portion.grams}г</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900/50 p-3 rounded-xl border border-slate-800/80 mb-3">
+                            <p class="font-semibold text-slate-200 text-sm">${rawFood.name}</p>
+                            <p class="text-xs text-slate-400 mt-0.5">${rawFood.desc}</p>
+                        </div>
+
+                        <div class="flex items-center space-x-4 text-xs">
+                            <span class="text-slate-400">БЖУ блюда:</span>
+                            <span class="text-sky-400 font-medium">Б: ${portion.p}г</span>
+                            <span class="text-amber-400 font-medium">Ж: ${portion.f}г</span>
+                            <span class="text-emerald-400 font-medium">У: ${portion.c}г</span>
+                        </div>
+                    </div>
+                `;
+                dailyContainer.insertAdjacentHTML('beforeend', cardHtml);
+            });
+
+            safeIcons();
+        }
+
+        function renderWeeklyMenu(tdee) {
+            const weeklyContainer = document.getElementById('weekly-menu-container');
+            weeklyContainer.innerHTML = '';
+
+            const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+
+            days.forEach((day, index) => {
+                const dayPlan=savedWeek.days[index];
+                const [bFood,lFood,sFood,dFood]=dayPlan.items.map((part,i)=>originalFood(i,part));
+                const [bPortion,lPortion,sPortion,dPortion]=dayPlan.items.map(displayPortion);
+
+                const dayHtml = `
+                    <div class="glass-card rounded-2xl p-5 space-y-3">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                            <h3 class="font-bold text-emerald-400 text-base flex items-center space-x-2">
+                                <i data-lucide="calendar" class="w-4 h-4"></i>
+                                <span>${day}</span>
+                            </h3>
+                            <span class="text-xs text-slate-400">Итого: ${Math.round(dayPlan.totals.kcal)} ккал</span>
+                        </div>
+                        
+                        <p class="text-xs ${dayPlan.meets?'text-emerald-400':'text-amber-400'}">${planSummary(dayPlan)}</p>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                <span class="text-indigo-400 font-bold block mb-1">Завтрак (${bPortion.kcal} ккал)</span>
+                                <p class="text-slate-300 font-medium">${bFood.name}</p>
+                                <span class="text-slate-500 text-[10px]">${bPortion.grams} г | Б:${bPortion.p} Ж:${bPortion.f} У:${bPortion.c}</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                <span class="text-emerald-400 font-bold block mb-1">Обед (${lPortion.kcal} ккал)</span>
+                                <p class="text-slate-300 font-medium">${lFood.name}</p>
+                                <span class="text-slate-500 text-[10px]">${lPortion.grams} г | Б:${lPortion.p} Ж:${lPortion.f} У:${lPortion.c}</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                <span class="text-rose-400 font-bold block mb-1">Перекус (${sPortion.kcal} ккал)</span>
+                                <p class="text-slate-300 font-medium">${sFood.name}</p>
+                                <span class="text-slate-500 text-[10px]">${sPortion.grams} г | Б:${sPortion.p} Ж:${sPortion.f} У:${sPortion.c}</span>
+                            </div>
+                            <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                <span class="text-sky-400 font-bold block mb-1">Ужин (${dPortion.kcal} ккал)</span>
+                                <p class="text-slate-300 font-medium">${dFood.name}</p>
+                                <span class="text-slate-500 text-[10px]">${dPortion.grams} г | Б:${dPortion.p} Ж:${dPortion.f} У:${dPortion.c}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                weeklyContainer.insertAdjacentHTML('beforeend', dayHtml);
+            });
+
+            safeIcons();
+        }
+
+        function setMenuMode(mode) {
+            currentMenuMode = mode;
+            const btnDaily = document.getElementById('btn-mode-daily');
+            const btnWeekly = document.getElementById('btn-mode-weekly');
+            const dailyContainer = document.getElementById('daily-menu-container');
+            const weeklyContainer = document.getElementById('weekly-menu-container');
+
+            if (mode === 'daily') {
+                btnDaily.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white transition-all';
+                btnWeekly.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all';
+                dailyContainer.classList.remove('hidden');
+                weeklyContainer.classList.add('hidden');
+            } else {
+                btnWeekly.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white transition-all';
+                btnDaily.className = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all';
+                weeklyContainer.classList.remove('hidden');
+                dailyContainer.classList.add('hidden');
+            }
+            generateMenuContent();
+        }
+
+        function regenerateMenu() {
+            if(!savedWeek)return;
+            savedWeek=NutriCalc.plan(savedWeek.targets,++planRevision);
+            persistProfile();
+            generateMenuContent();
+        }
+
+        // Handbook Render & Search Logic
+        function renderHandbook() {
+            const container = document.getElementById('handbook-cards-container');
+            container.innerHTML = '';
+
+            const searchQuery = document.getElementById('nutrientSearch')?.value.toLowerCase() || '';
+
+            const filtered = nutrientDatabase.filter(item => {
+                const matchesCategory = (currentNutrientCategory === 'all') || (item.category === currentNutrientCategory);
+                const matchesSearch = item.name.toLowerCase().includes(searchQuery) || 
+                                      item.role.toLowerCase().includes(searchQuery) || 
+                                      item.sources.toLowerCase().includes(searchQuery);
+                return matchesCategory && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-2 text-center py-8 text-slate-500 text-sm">
+                        Нутриенты по вашему запросу не найдены.
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const card = `
+                    <div class="glass-card rounded-2xl p-5 border-t-2 border-t-${item.color}-400 space-y-3 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center space-x-2">
+                                    <div class="p-2 bg-slate-900 rounded-lg text-${item.color}-400">
+                                        <i data-lucide="${item.icon}" class="w-4 h-4"></i>
+                                    </div>
+                                    <h3 class="font-bold text-slate-100 text-sm">${item.name}</h3>
+                                </div>
+                                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                                    ${item.category === 'vitamin' ? 'Витамин' : 'Минерал'}
+                                </span>
+                            </div>
+
+                            <div class="space-y-2 text-xs">
+                                <div>
+                                    <span class="text-slate-400 font-medium">Биологическая роль:</span>
+                                    <p class="text-slate-200 mt-0.5">${item.role}</p>
+                                </div>
+                                <div>
+                                    <span class="text-slate-400 font-medium">Источники:</span>
+                                    <p class="text-emerald-400/90 mt-0.5">${item.sources}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-800/80 flex justify-between items-center text-xs">
+                            <span class="text-slate-500">Возрастная норма:</span>
+                            <span class="font-bold text-slate-200 bg-slate-900 px-2 py-1 rounded-md border border-slate-800" title="Норма зависит от возраста и пола; значения из приложения проекта не являются персональным назначением"><a href="https://ods.od.nih.gov/HealthInformation/nutrientrecommendations.aspx" target="_blank" rel="noopener noreferrer">См. источник</a></span>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', card);
+            });
+
+            safeIcons();
+        }
+
+        function filterNutrients() {
+            renderHandbook();
+        }
+
+        function filterNutrientCategory(cat) {
+            currentNutrientCategory = cat;
+            ['all', 'vitamin', 'mineral'].forEach(c => {
+                const btn = document.getElementById(`filter-${c}`);
+                if (c === cat) {
+                    btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500 text-white';
+                } else {
+                    btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 hover:text-white';
+                }
+            });
+            renderHandbook();
+        }
+
+// API для проверки исходного интерфейса и численных инвариантов.
+window.NutriCalcOriginal={profileValues,calculateNutrients,calculatePortion,planSummary,getPlan:()=>savedWeek,getMode:()=>currentMenuMode};
